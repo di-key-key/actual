@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 import createDebug from 'debug';
 import type { Request, Response } from 'express';
 import express from 'express';
@@ -36,15 +38,41 @@ app.use(express.json());
 
 // --- Shared helpers ---
 
+function getPsuIp(req: Request): string | undefined {
+  const requestIp = req.ip;
+
+  if (requestIp && !isBlockedIp(requestIp)) {
+    debug('Using PSU headers for public PSU IP');
+    return requestIp;
+  }
+
+  const fallbackIp = process.env.ACTUAL_ENABLEBANKING_PSU_IP?.trim();
+
+  if (fallbackIp) {
+    if (isIP(fallbackIp) === 0 || isBlockedIp(fallbackIp)) {
+      debug(
+        'Ignoring configured PSU IP fallback because it is invalid or local/private',
+      );
+    } else {
+      debug(
+        'Using configured public PSU IP fallback for local/private client IP',
+      );
+      return fallbackIp;
+    }
+  }
+
+  debug('Skipping PSU headers because PSU IP is local/private');
+  return undefined;
+}
+
 function extractPsuHeaders(req: Request): PsuHeaders {
-  const ip = req.ip;
+  const ip = getPsuIp(req);
   const ua =
     typeof req.headers['user-agent'] === 'string'
       ? req.headers['user-agent']
       : undefined;
 
-  if (!ip || isBlockedIp(ip)) {
-    debug('Skipping PSU headers because PSU IP is local/private');
+  if (!ip) {
     return {};
   }
 
@@ -55,8 +83,6 @@ function extractPsuHeaders(req: Request): PsuHeaders {
   if (ua) {
     headers['Psu-User-Agent'] = ua;
   }
-
-  debug('Using PSU headers for public PSU IP');
 
   return headers;
 }

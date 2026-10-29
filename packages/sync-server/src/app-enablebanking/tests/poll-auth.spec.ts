@@ -76,6 +76,7 @@ describe('Enable Banking Express routes', () => {
   });
 
   afterEach(() => {
+    delete process.env.ACTUAL_ENABLEBANKING_PSU_IP;
     vi.restoreAllMocks();
   });
 
@@ -365,6 +366,33 @@ describe('Enable Banking Express routes', () => {
   });
 
   describe('POST /transactions', () => {
+    it('uses configured public PSU IP when client IP is local/private', async () => {
+      process.env.ACTUAL_ENABLEBANKING_PSU_IP = '1.1.1.1';
+
+      mockFetchResponse({ balances: [] });
+      mockFetchResponse({ transactions: [] });
+
+      const res = await request(app)
+        .post('/transactions')
+        .set('X-Forwarded-For', '192.168.1.50')
+        .send({
+          accountId: 'uid-1',
+          startDate: '2026-01-01',
+        });
+
+      expect(res.body.status).toBe('ok');
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      const firstRequestOptions = mockFetch.mock.calls[0][1];
+
+      expect(firstRequestOptions.headers).toEqual(
+        expect.objectContaining({
+          'Psu-Ip-Address': '1.1.1.1',
+        }),
+      );
+    });
+
     it('returns error when accountId is missing', async () => {
       const res = await request(app)
         .post('/transactions')
