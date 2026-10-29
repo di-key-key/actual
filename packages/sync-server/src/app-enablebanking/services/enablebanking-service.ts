@@ -21,8 +21,14 @@ export type EnableBankingTransaction = {
   entry_reference?: string;
   transaction_id?: string;
   transaction_amount: { currency: string; amount: string };
-  creditor?: { name?: string | null } | null;
-  debtor?: { name?: string | null } | null;
+  creditor?: {
+    name?: string | null;
+    postal_address?: { address_line?: string[] | null } | null;
+  } | null;
+  debtor?: {
+    name?: string | null;
+    postal_address?: { address_line?: string[] | null } | null;
+  } | null;
   credit_debit_indicator?: 'CRDT' | 'DBIT';
   status?: 'BOOK' | 'PDNG';
   booking_date?: string;
@@ -208,6 +214,20 @@ function cleanRemittanceArray(arr: string[]): string[] {
   return arr.map(stripSepaPrefix).filter(Boolean);
 }
 
+function partyName(
+  party?: EnableBankingTransaction['creditor'],
+): string | undefined {
+  if (party?.name?.trim()) {
+    return party.name.trim();
+  }
+
+  const lines = party?.postal_address?.address_line
+    ?.map(line => line.trim())
+    .filter(Boolean);
+
+  return lines?.length ? lines.join(' ') : undefined;
+}
+
 export function normalizeTransaction(
   tx: EnableBankingTransaction,
 ): BankSyncTransaction {
@@ -216,14 +236,17 @@ export function normalizeTransaction(
     tx.booking_date || tx.value_date || tx.transaction_date || '';
   const valueDate = tx.value_date;
 
+  const creditorName = partyName(tx.creditor);
+  const debtorName = partyName(tx.debtor);
+
   let payeeName = '';
   // With a known direction, the other party is the account holder.
   if (tx.credit_debit_indicator === 'CRDT') {
-    payeeName = tx.debtor?.name || '';
+    payeeName = debtorName || '';
   } else if (tx.credit_debit_indicator === 'DBIT') {
-    payeeName = tx.creditor?.name || '';
+    payeeName = creditorName || '';
   } else {
-    payeeName = tx.creditor?.name || tx.debtor?.name || '';
+    payeeName = creditorName || debtorName || '';
   }
 
   const cleanedAll = tx.remittance_information

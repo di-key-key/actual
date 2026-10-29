@@ -43,6 +43,40 @@ describe('normalizeTransaction', () => {
     expect(result.transactionAmount.amount).toBe('-25.99');
   });
 
+  it('should use creditor postal address for DBIT when name is missing', () => {
+    const result = normalizeTransaction({
+      ...mockDebitTransaction,
+      creditor: {
+        name: null,
+        postal_address: {
+          address_line: ['ACME STORE WARSAW'],
+        },
+      },
+      debtor: { name: 'Account Holder' },
+      remittance_information: ['Card payment 1234xx5678'],
+    });
+
+    expect(result.payeeName).toBe('ACME STORE WARSAW');
+    expect(result.notes).toBe('Card payment 1234xx5678');
+  });
+
+  it('should use debtor postal address for CRDT when name is missing', () => {
+    const result = normalizeTransaction({
+      ...mockCreditTransaction,
+      creditor: { name: 'Account Holder' },
+      debtor: {
+        name: null,
+        postal_address: {
+          address_line: ['SOME CLIENT LTD'],
+        },
+      },
+      remittance_information: ['Invoice 1-2026'],
+    });
+
+    expect(result.payeeName).toBe('SOME CLIENT LTD');
+    expect(result.notes).toBe('Invoice 1-2026');
+  });
+
   // GH #9165: a missing counterparty must not select the account holder.
   it('should not use the account holder as payee for DBIT when creditor is missing', () => {
     const result = normalizeTransaction({
